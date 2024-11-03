@@ -26,6 +26,7 @@ class GELU(nn.Module):
         """
         # --- TODO: start of your code ---
         logits = 0.5 * x * (1 + torch.tanh(torch.sqrt(torch.tensor(2 / torch.pi) + 1e-8) * (x + 0.044715 * x ** 3)))
+        #adding 1e-8 to avoid numerical issues, when dealing with small values that might lead to instability
         return logits
         # --- TODO: end of your code ---
         raise NotImplementedError
@@ -281,7 +282,6 @@ class GPT(nn.Module):
 
             _, ids_next = torch.topk(probs, k = 1, dim = -1) #only select the 
             # most likely token, always uses greedy decoding
-            # print(f"Dimension of ids is:{ids.size()} and ids next is {ids_next.size()}")
             
             ids_next = ids_next.squeeze(-1)
 
