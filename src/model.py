@@ -25,7 +25,8 @@ class GELU(nn.Module):
         Returns the GELU activation of the input x.
         """
         # --- TODO: start of your code ---
-
+        logits = 0.5 * x * (1 + torch.tanh(torch.sqrt(torch.tensor(2 / torch.pi) + 1e-8) * (x + 0.044715 * x ** 3)))
+        return logits
         # --- TODO: end of your code ---
         raise NotImplementedError
 
@@ -109,14 +110,14 @@ class GPT(nn.Module):
 
     def __init__(self, config: Config):
         super().__init__()
-        assert config.n_digits is not None
-        assert config.gpt_seq_len is not None
+        assert config.n_digits is not None    # this is model vocab size
+        assert config.gpt_seq_len is not None #this will be the seq len = 1024
         self.seq_length = config.gpt_seq_len
 
         self.transformer = nn.ModuleDict(
             dict(
-                wte=nn.Embedding(config.n_digits, config.d_model),
-                wpe=nn.Embedding(config.gpt_seq_len, config.d_model),
+                wte=nn.Embedding(config.n_digits, config.d_model), #use the token and position embedding layers in our forward function.
+                wpe=nn.Embedding(config.gpt_seq_len, config.d_model), 
                 drop=nn.Dropout(config.dropout),
                 h=nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
                 ln_f=nn.LayerNorm(config.d_model),
@@ -215,10 +216,35 @@ class GPT(nn.Module):
         Hint: First, you can generate token embeddings using the input token indices and the model's token embedding layer. Similarly, generate position embeddings using the positions (ranging from 0 to the length of the sequence) and the position embedding layer.
         """
         # --- TODO: start of your code ---
+        import numpy as np
+        batch_size, seq_len = idx.size()
+        loss = None
+        
+        if seq_len > self.seq_length:
+            raise ValueError("The input seq_len exceeds the model's sequence length")
 
+
+        pos = torch.arange(0, seq_len, dtype=torch.long, device=idx.device).unsqueeze(0)
+
+        token_embeddings = self.transformer.wte(idx)
+        positional_embeddings = self.transformer.wpe(pos)
+        
+        normalized_input = self.transformer.ln_f(token_embeddings + positional_embeddings)
+        input = self.transformer.drop(normalized_input)
+        
+        for batch in self.transformer.h:
+            input = batch(input)
+        
+        logits = self.output_head(input)
+
+        if targets is not None:
+            #since we have targets provided lets compute the cross entropy loss
+            loss_fn = F.cross_entropy
+            loss = loss_fn(logits.view(-1,logits.size(-1)), targets.view(-1),ignore_index = -1)
+
+        return logits, loss
         # --- TODO: end of your code ---
-
-        raise NotImplementedError
+        # raise NotImplementedError
 
     @torch.no_grad()
     def inference(self, ids, max_new_tokens):
@@ -242,7 +268,25 @@ class GPT(nn.Module):
 
         for _ in range(max_new_tokens):
             # --- TODO: start of your code ---
+            seq_len = ids.size(1)
+            if seq_len <= self.seq_length:
+                ids_cond = ids
+            else:
+                ids_cond = ids[:, -self.seq_length:]
+            logits, _ = self(ids_cond)
 
+            logits = logits[:, -1 :] 
+
+            probs = F.softmax(logits, dim = -1)
+
+            _, ids_next = torch.topk(probs, k = 1, dim = -1) #only select the 
+            # most likely token, always uses greedy decoding
+            # print(f"Dimension of ids is:{ids.size()} and ids next is {ids_next.size()}")
+            
+            ids_next = ids_next.squeeze(-1)
+
+            ids = torch.cat((ids, ids_next), dim = 1)
+            
             # --- TODO: end of your code ---
             pass
 
